@@ -18,3 +18,11 @@ cabal.sandbox.config
 .stack-work/
 cabal.project.local
 .HTF/
+/.idea/workspace.xml
+/.idea/libraries
+.idea/
+app/app.iml
+*.iml
+*~
+/out
+.DS_Store
