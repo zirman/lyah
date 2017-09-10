@@ -46,17 +46,20 @@ elemAt (L:ds) (Node _ l _) = elemAt ds l
 elemAt (R:ds) (Node _ _ r) = elemAt ds r
 elemAt [] (Node x _ _) = x
 
-goLeft :: (Tree a, Breadcrumbs a) -> (Tree a, Breadcrumbs a)
-goLeft (Node x l r, bs) = (l, LeftCrumb x r : bs)
-
-goRight :: (Tree a, Breadcrumbs a) -> (Tree a, Breadcrumbs a)
-goRight (Node x l r, bs) = (r, RightCrumb x l : bs)
-
-goUp :: (Tree a, Breadcrumbs a) -> (Tree a, Breadcrumbs a)
-goUp (l, LeftCrumb x r : bs) = (Node x l r, bs)
-goUp (r, RightCrumb x l : bs) = (Node x l r, bs)
-
 type Zipper a = (Tree a, Breadcrumbs a)
+
+goLeft :: Zipper a -> Maybe (Zipper a)
+goLeft (Node x l r, bs) = Just (l, LeftCrumb x r : bs)
+goLeft (Empty, bs) = Nothing
+
+goRight :: Zipper a -> Maybe (Zipper a)
+goRight (Node x l r, bs) = Just (r, RightCrumb x l : bs)
+goRight (Empty, bs) = Nothing
+
+goUp :: Zipper a -> Maybe (Zipper a)
+goUp (l, LeftCrumb x r : bs) = Just (Node x l r, bs)
+goUp (r, RightCrumb x l : bs) = Just (Node x l r, bs)
+goUp (Empty, bs) = Nothing
 
 --insert :: a -> Zipper a -> Zipper a
 --insert x (Node _ l r, bs) = (Node x l r, bs)
@@ -69,17 +72,19 @@ modify f (Empty, bs) = (Empty, bs)
 attach :: Tree a -> Zipper a -> Zipper a
 attach t (_, bs) = (t, bs)
 
-topMost :: Zipper a -> Zipper a
-topMost (t, []) = (t, [])
-topMost z = topMost (goUp z)
+topMost :: Zipper a -> Maybe (Zipper a)
+topMost (t, []) = Just (t, [])
+topMost z = goUp z >>= topMost
 
 type ListZipper a = ([a], [a])
 
-goForward :: ListZipper a -> ListZipper a
-goForward (x:xs, bs) = (xs, x:bs)
+goForward :: ListZipper a -> Maybe (ListZipper a)
+goForward (x:xs, bs) = Just (xs, x:bs)
+goForward ([], bs) = Nothing
 
-goBackward :: ListZipper a -> ListZipper a
-goBackward (xs, x:bs) = (x:xs, bs)
+goBackward :: ListZipper a -> Maybe (ListZipper a)
+goBackward (xs, x:bs) = Just (x:xs, bs)
+goBackward (xs, []) = Nothing
 
 type Name = String
 type Data = String
@@ -106,3 +111,33 @@ myDisk =
 
 data FSCrumb = FSCrumb Name [FSItem] [FSItem] deriving (Show)
 type FSZipper = (FSItem, [FSCrumb])
+
+fsUp :: FSZipper -> Maybe FSZipper
+fsUp (item, FSCrumb name ls rs:bs) = Just (Folder name (ls ++ [item] ++ rs), bs)
+fsUp (item, []) = Nothing
+
+split :: (a -> Bool) -> [a] -> ([a], [a])
+split p = rec []
+  where
+    rec ls (y:rs) | p y = (ls, y:rs)
+    rec ls (y:rs) = rec (ls ++ [y]) rs
+    rec ls [] = (ls, [])
+
+fsTo :: Name -> FSZipper -> Maybe FSZipper
+fsTo name (Folder folderName items, bs) =
+  let (ls, rs) = split (matchName name) items
+  in case rs of
+    item:rs -> Just (item, FSCrumb folderName ls rs : bs)
+    [] -> Nothing
+  where
+    matchName :: Name -> FSItem -> Bool
+    matchName name (File fileName _) = name == fileName
+    matchName name (Folder folderName _) = name == folderName
+
+fsRename :: Name -> FSZipper -> FSZipper
+fsRename name (File _ d, bs) = (File name d, bs)
+fsRename name (Folder _ items, bs) = (Folder name items, bs)
+
+fsNewFile :: FSItem -> FSZipper -> Maybe FSZipper
+fsNewFile item (Folder name items, bs) = Just (Folder name (item:items), bs)
+fsNewFile item (File _ _, bs) = Nothing
